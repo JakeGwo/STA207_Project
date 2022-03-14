@@ -1,0 +1,635 @@
+---
+title: "Final Project Report"
+author: "Jake Gwo"
+date: "3/9/2022"
+output: html_document
+---
+
+
+
+```{r, echo=F, message=F, warning=F}
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(MASS)
+
+library(Rcpp)
+library(readxl)
+
+library(vtable)
+library(sjPlot)
+```
+
+```{r, echo=F, message=F, warning=F}
+ca_covid <- read_csv("covid19cases_test.csv")
+```
+
+
+```{r, echo=F, message=F, warning=F}
+cali.state.covid <- ca_covid[ca_covid$area=="California",]
+cali.county.covid <- ca_covid[!ca_covid$area=="California",]
+```
+
+
+```{r, echo=F, message=F, warning=F}
+cali.county.covid <- cali.county.covid[!cali.county.covid$area %in% c("Unknown", "Out of state"),]
+```
+
+
+```{r, echo=F, message=F, warning=F}
+cali.state.covid$date <- as.Date(cali.state.covid$date, format="%Y-%m-%d")
+cali.county.covid$date <- as.Date(cali.county.covid$date, format="%Y-%m-%d")
+
+cali.county.covid <- cali.county.covid[!is.na(cali.county.covid$date),]
+#sum(rowSums(is.na(cali.county.covid)) == ncol(cali.county.covid))
+```
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+cali.state.covid$fatal_rate <- cali.state.covid$cumulative_deaths/cali.state.covid$cumulative_cases *100
+cali.county.covid$fatal_rate <- cali.county.covid$cumulative_deaths/cali.county.covid$cumulative_cases *100
+
+#sum(rowSums(is.na(cali.county.covid)) == ncol(cali.county.covid))
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+cali.county.covid <- cali.county.covid[cali.county.covid$date > "2020-03-01",]
+
+#sum(rowSums(is.na(cali.county.covid)) == ncol(cali.county.covid))
+```
+
+```{r, echo=F, message=F, warning=F}
+top10 <- cali.county.covid %>% group_by(area) %>% summarise(Pop = unique(population)) %>% arrange(desc(Pop)) %>% head(10) %>% pull(area)
+bot10 <- cali.county.covid %>% group_by(area) %>% summarise(Pop = unique(population)) %>% arrange(Pop) %>% head(10) %>% pull(area)
+bot20 <- cali.county.covid %>% group_by(area) %>% summarise(Pop = unique(population)) %>% arrange(Pop) %>% head(20) %>% pull(area)
+```
+
+```{r, echo=F, fig.width=12, fig.height=6}
+# fatal_rate visualization
+p3 <- ggplot(cali.county.covid[cali.county.covid$area %in% top10,], aes(y=fatal_rate, x=date, color=area)) + geom_line() +
+  ggtitle("Top 10 most populated counties") + ylab("Mortality rate")
+p4 <- ggplot(cali.county.covid[cali.county.covid$area %in% bot10,], aes(y=fatal_rate, x=date, color=area)) + geom_line() +
+  ggtitle("Top 10 least populated counties") + ylab("Mortality rate")
+```
+
+
+
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+#choosing a random date from 2021-01 to 2021-12
+fatal_for_map1 <- cali.county.covid[cali.county.covid$date=="2021-06-01",c("area", "fatal_rate")]
+fatal_for_map1$area <- tolower(fatal_for_map1$area)
+
+fatal_for_map2 <- cali.county.covid[cali.county.covid$date=="2021-12-01",c("area", "fatal_rate")]
+fatal_for_map2$area <- tolower(fatal_for_map2$area)
+```
+
+
+```{r, echo=F, message=F, warning=F}
+us_counties <- map_data("county")
+ca_counties <- us_counties[us_counties$region=="california",]
+
+p1 <- ca_counties %>% left_join(fatal_for_map1, by=c("subregion"="area")) %>%
+  ggplot(aes(x=long,y=lat,group=group, fill=fatal_rate)) + labs(fill='Percentage')+
+  geom_polygon(color = "gray90", size = 0.1) + 
+  coord_fixed(1.2)+
+  scale_fill_gradient2()+
+  ggtitle("Mortality rate on June 1, 2021")+
+  theme(legend.position="right",
+        axis.line=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid=element_blank())
+
+p2 <- ca_counties %>% left_join(fatal_for_map2, by=c("subregion"="area")) %>%
+  ggplot(aes(x=long,y=lat,group=group, fill=fatal_rate)) + labs(fill='Percentage')+
+  geom_polygon(color = "gray90", size = 0.1) + 
+  coord_fixed(1.2)+
+  scale_fill_gradient2()+
+  ggtitle("Mortality rate on December 1, 2021")+
+  theme(legend.position="right",
+        axis.line=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid=element_blank())
+```
+
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+# Load Urban-Rural Classification Scheme
+
+
+
+
+Urban.Rural <- read_excel("NCHSURCodes2013.xlsx")
+ca_Urban.Rural <- Urban.Rural[Urban.Rural$`State Abr.`=="CA",c("County name", "2013 code")]
+ca_Urban.Rural$`County name` <- sapply(ca_Urban.Rural$`County name`, function(x){substr(x,1,nchar(x)-7)})
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+cali.county.covid.withUR <- cali.county.covid %>% left_join(ca_Urban.Rural, by=c("area"="County name"))
+cali.county.covid.withUR$`2013 code` <- as.factor(cali.county.covid.withUR$`2013 code`)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+# Load income
+
+
+
+
+
+Cali_county_income <- read_csv("Cali_county_income.csv")[,c("County","Per capita income[3]")]
+Cali_county_income$Per_capita_income <- sapply(Cali_county_income$`Per capita income[3]`, 
+                                               function(x){substr(x,2,nchar(x))})
+
+Cali_county_income$Per_capita_income <- as.numeric(gsub("\\,", "", Cali_county_income$Per_capita_income))
+Cali_county_income <- Cali_county_income[,-2]
+```
+
+```{r, echo=F, message=F, warning=F}
+cali.county.covid.withUR.Inc <- cali.county.covid.withUR %>% left_join(Cali_county_income, by=c("area"="County"))
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+# Vaccine
+
+
+
+
+
+vaccine.ca <- read_csv("California_Vaccination.csv")
+vaccine.ca$Date <- as.Date(vaccine.ca$Date, format="%m/%d/%Y")
+vaccine.ca <- vaccine.ca[order(vaccine.ca$Date),]
+```
+
+
+
+
+```{r, echo=F}
+vaccine.ca$Recip_County <- sapply(vaccine.ca$Recip_County, function(x){substr(x,1,nchar(x)-7)})
+vaccine.ca.extracted <- vaccine.ca[c("Date", "Recip_County", "Series_Complete_Yes", "Booster_Doses")]
+colnames(vaccine.ca.extracted)[c(3,4)] <- c("Total_vaccinated", "Total_boosted")
+```
+
+
+```{r, echo=F}
+cali.county.covid.withUR.Inc.Vac <- cali.county.covid.withUR.Inc %>% left_join(vaccine.ca.extracted, by=c("area"="Recip_County", "date"="Date"))
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+pcts <- cali.county.covid.withUR.Inc.Vac %>% 
+  summarise(Total_vacc_pct = Total_vaccinated/population *100,  #CA population = 39538223
+            Total_boost_pct = Total_boosted/population *100, .groups="drop")
+cali.county.covid.withUR.Inc.Vac <- cbind(cali.county.covid.withUR.Inc.Vac, pcts)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+# NA's and 0's
+
+
+#sum(cali.county.covid.withUR.Inc.Vac$area=="Alpine")
+#table(cali.county.covid.withUR.Inc.Vac[(cali.county.covid.withUR.Inc.Vac$area=="Alpine"),]$fatal_rate==0)
+#table(cali.county.covid.withUR.Inc.Vac[(cali.county.covid.withUR.Inc.Vac$area=="Sierra"),]$fatal_rate==0)
+
+missings <- data.frame(`Zero`=c(715/731, 475/731),
+           `Nonzero`=c(0, 177/731),
+           `NaN`=c(16/731, 79/731))
+rownames(missings) <- c("Alpine", "Sierra")
+```
+
+```{r, echo=F, message=F, warning=F}
+data_precleaned <- cali.county.covid.withUR.Inc.Vac[!cali.county.covid.withUR.Inc.Vac$area %in% c("Alpine", "Sierra"),]
+```
+
+```{r, echo=F, message=F, warning=F}
+dates <- c(summary(data_precleaned[is.nan(data_precleaned$fatal_rate),]$date))
+
+data_precleaned <- data_precleaned[data_precleaned$date >= "2020-03-30",]
+data_precleaned[is.na(data_precleaned$fatal_rate),]$fatal_rate <- 0
+```
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+# EDA
+
+
+
+selec.bot10 <- vaccine.ca.extracted[vaccine.ca.extracted$Recip_County %in% bot20,c("Recip_County","Total_vaccinated")] %>% group_by(Recip_County) %>% summarise(sum=sum(Total_vaccinated)) %>% filter(sum>0) %>% arrange(sum) %>% head(10) %>% pull(Recip_County)
+```
+
+
+```{r, echo=F, message=F, warning=F}
+# vaccinated and boosted visualization
+p5 <- ggplot(cali.county.covid.withUR.Inc.Vac[cali.county.covid.withUR.Inc.Vac$area %in% top10 & cali.county.covid.withUR.Inc.Vac$date >= "2020-12-13",], aes(y=Total_vacc_pct, x=date, color=area)) + geom_line() + ggtitle("Top 10 most populated counties") + ylab("Fully vaccinated percentage")
+
+p6 <- ggplot(cali.county.covid.withUR.Inc.Vac[cali.county.covid.withUR.Inc.Vac$area %in% selec.bot10 & cali.county.covid.withUR.Inc.Vac$date >= "2020-12-13",], aes(y=Total_vacc_pct, x=date, color=area)) + geom_line() + ggtitle("Selected* top 10 least populated counties") + ylab("Fully vaccinated percentage")
+
+p7 <- ggplot(cali.county.covid.withUR.Inc.Vac[cali.county.covid.withUR.Inc.Vac$area %in% top10 & cali.county.covid.withUR.Inc.Vac$date >= "2021-12-15",], aes(y=Total_boost_pct, x=date, color=area)) + geom_line() + ggtitle("Top 10 most populated counties") + ylab("Boosted percentage")
+
+p8 <- ggplot(cali.county.covid.withUR.Inc.Vac[cali.county.covid.withUR.Inc.Vac$area %in% selec.bot10 & cali.county.covid.withUR.Inc.Vac$date >= "2021-12-15",], aes(y=Total_boost_pct, x=date, color=area)) + geom_line() + ggtitle("Selected* top 10 least populated counties") + ylab("Boosted percentage")
+```
+
+
+```{r, echo=F, message=F, warning=F}
+p9 <- ggplot(data=cali.county.covid.withUR.Inc.Vac, aes(x=Per_capita_income, color=`2013 code`))+geom_boxplot() + labs(color='Urban-rural code') 
+```
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+# Regression
+
+
+data2021 <- data_precleaned[data_precleaned$date >= "2021-01-06" &
+                              data_precleaned$date <= "2021-12-30",]
+
+data1 <- data2021[data2021$`2013 code` %in% c(1,2,3),]
+data2 <- data2021[!data2021$`2013 code` %in% c(1,2,3),]
+```
+
+```{r, echo=F, message=F, warning=F}
+m.1.full <- lm(fatal_rate ~ Total_vacc_pct*`2013 code`*Per_capita_income, data=data1)
+```
+
+
+```{r, echo=F, message=F, warning=F}
+fit.null <- lm(fatal_rate~1, data=data1)
+
+fit.BIC <- stepAIC(fit.null, scope = list(upper = m.1.full, lower = ~1), direction = "both", k = log(nrow(data1)), trace = FALSE)
+```
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+m.1 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=data1)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+m.2 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=data2)
+```
+
+
+
+```{r, echo=F, message=F, warning=F}
+#single day models
+d1 <- data_precleaned[data_precleaned$date=="2021-07-28"&
+                        data_precleaned$`2013 code` %in% c(1,2,3),]
+d2 <- data_precleaned[data_precleaned$date>="2021-07-28"&data_precleaned$date<="2021-08-04"&
+                        data_precleaned$`2013 code` %in% c(1,2,3),]
+d3 <- data_precleaned[data_precleaned$date>="2021-07-28"&data_precleaned$date<="2021-08-11"&
+                        data_precleaned$`2013 code` %in% c(1,2,3),]
+d4 <- data_precleaned[data_precleaned$date>="2021-07-28"&data_precleaned$date<="2021-08-28"&
+                        data_precleaned$`2013 code` %in% c(1,2,3),]
+
+m.d1 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=d1)
+
+
+m.d2 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=d2)
+
+
+m.d3 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=d3)
+
+
+m.d4 <- lm(fatal_rate ~ `2013 code` + Per_capita_income + Total_vacc_pct + `2013 code`:Per_capita_income + `2013 code`:Total_vacc_pct, data=d4)
+
+```
+
+
+
+
+```{r, echo=F, message=F, warning=F}
+# Outliers?
+
+
+n <- nrow(d4)
+
+#y outliers
+res <- residuals(m.d4)# residuals of the final model
+p <- length(m.d4$coefficients)
+h <- influence(m.d4)$hat
+d.res.std <- studres(m.d4) #studentized deleted residuals
+y.ind <- as.vector(which(abs(d.res.std) >= qt(1-0.1/(2*n),n-p-1))) # using bonferronis thresh hold with alpha=0.1
+
+#x outliers
+x.ind <- as.vector(which(h>(2*p/n)))
+
+#influential cases
+infl.ind <- as.vector(which(cooks.distance(m.d4) > 4/(n-p)))
+```
+
+```{r, echo=F, message=F, warning=F}
+#remove outliers, obtain final model
+take.out.ind <- unique(c(intersect(infl.ind, x.ind), intersect(infl.ind, y.ind)))
+
+m.final <- lm(m.d4, data = d4[-take.out.ind,])
+#summary(m.final)
+```
+
+
+
+
+
+
+
+
+# Introduction
+Coronavirus disease 2019, more commonly referred as COVID-19, was a new strain of the coronavirus family. Soon after the discovery of the first case of human infection in Wuhan, China in December 2019, the virus quickly took over the world, infecting hundreds of millions of people. COVID-19, especially at the beginning of its outbreak, was rather fatal, as many of the infected were the elderly and the ones with compromised immune system. Half of a million lives in the world was taken away within the first six months, and almost a quarter of that was from the US. Fortunately, COVID-19 vaccines started to become available in the US at the end of 2020. Over the next few months, as more and more people got vaccinated, daily cases and daily death number started to decrease, and the mortality rate became more stable.\
+As COVID-19 has been so prevalent, and its effect deeply ingrained in our life, there are too much intricacies so that it is almost impossible to study every aspect of the pandemic. In this project, the focus is on the 58 counties in California and the mortality rate of COVID-19 in each county derived from publicly available data on the CDC website. Our interest lies in whether there is a clear relationship between mortality rates of the counties and their demographical statistics such as population and per capita income. The result of this study can help the authorities adjust strategies on resource distribution and policy making. For instance, if a county with a lower income level has high mortality rate, more medical resources and better healthcare policies could help alleviate the circumstance.\
+
+
+# Background
+
+There are four data collections being used in this project. The county-wise COVID-19 cases and death data is from California Health and Human Services (CHHS) Open Data Portal. The COVID-19 vaccination data is from Centers for Disease Control and Prevention (CDC) website. The US counties income data is from U.S. Census Bureau Community Survey result. The US counties Urban-Rural classification data is from National Center for Health Statistics (NCHS), available on the CDC website.\
+
+ \
+
+The study is aimed to find relationship between counties' urban-rural classification level, the per capita income, and the mortality rate of COVID-19. County-wise vaccination rate is also used as a covariate for time period that is applicable (December 2020 - current). The county-wise COVID-19 cases and death data gives cumulative death and cumulative cases in every county on each day. We use this to derive the mortality rate variable by$${\rm mortality\ rate=}\frac{{\rm cumulative\ death}}{\rm cumulative\ cases}\cdot 100$$ to represent the percentage mortality rate for the given day. This is also the *response variable*.\
+
+ \
+
+For the intuition of the covariate selection, we examine the following graphs obtained from two of the data sources
+
+```{r, echo=FALSE,out.width="49%", out.height="20%",fig.cap="Per Capita Income (left) Urban-Rural Classification (right)",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("Capture1.PNG","Capture2.PNG"))
+``` 
+
+Areas with higher income level (in dollar amount) in the left graph are shaded darker. From these two graphs we can see that there are some interactions between the income level and the urban-rural classification of a county. Specifically, a "more urban" county usually has a higher income level. To see how these two factors relate to mortality rate, we plot counties' mortality rates in the following graphs
+
+```{r, echo=F, fig.width=6}
+p1
+p2
+```
+
+
+From these graphs, we observe a vague but nonetheless interesting pattern: rural counties might have higher mortality rates. To further examine this hypothesis and potential interaction effects, we proceed to more statistical analyses.
+
+
+
+# Descriptive Analysis
+
+We first look at the descriptive statistics of our data. For the quantitative variables including counties' cases, deaths, mortality, vaccine rate, and income, the summary statistics are
+```{r, echo=F}
+st(cali.county.covid.withUR.Inc.Vac[,-c(1,2,3,9:17,19)])
+```
+
+
+For the qualitative variable, urban-rural classification, the summary statistics are
+ \
+```{r, echo=F}
+df <- data.frame(table(cali.county.covid.withUR.Inc.Vac[,19])/nrow(cali.county.covid.withUR.Inc.Vac) * 100)
+
+counts <- cali.county.covid.withUR.Inc.Vac %>% group_by(`2013 code`) %>% summarise(Count = length(unique(area)), .groups="drop")
+df <- cbind(df,counts[,2])
+
+colnames(df) <- c("Urban-rural classification", "Percentage", "Count")
+
+levels(df$`Urban-rural classification`) <- c("Large central metro", "Large fringe metro", "Medium metro", 
+                                                  "Small metro", "Micropolitan", "Non-core")
+knitr::kable(df, format = "html")
+```
+ \
+
+Below are the most and least populated counties
+```{r, echo=F, message=F, warning=F}
+pops <- cali.county.covid.withUR.Inc.Vac %>% group_by(area) %>% summarise(population=mean(population),.groups="drop") %>% arrange(desc(population))
+kable(rbind(head(pops),tail(pops)))
+```
+ \
+
+We now look for missing values or anomalies in the data. After some exploration, we find that Sierra and Alpine county has the most zeros for mortality rate across the whole data. Below is a table showing the number of observations with zero or NaN mortality rate.
+ \
+```{r, echo=F, message=F, warning=F}
+kable(missings, format = "html")
+```
+
+Notice that they are also the two least populated counties. Hence we decide to take observations from these two counties out of the data.\
+
+Regarding NA's, below are the summary statistics for observations that has NA or NaN mortality rate. 
+ \
+```{r, echo=F, message=F, warning=F}
+kable(data.frame(dates), format = "html")
+```
+ \
+We see that majority of these observations are before April 2020, when the pandemic has merely started. We hence make the decision to take out observations that occurred before March 30, 2020, and replace NA mortality rate in observations occurred afterwards with 0.
+
+
+
+```{r, echo=F, message=F, warning=F}
+p5
+p6
+p7
+p8
+```
+
+From the graphs above, we can observe how the percentage of fully vaccinated as well as boosted people changes for each of the listed counties. Notice that for some counties there are sudden increases in the percentage, which could be due to untimely recording or other reasons.
+
+
+```{r, echo=F, message=F, warning=F}
+p9
+```
+
+From this figure, there is a clear interaction effect between average per capita income of a county and how urban the county is, where we see the two most urban categories, *large central metro* and *large fringe metro*, having the highest income level.\
+
+The following graphs allow us to better understand the change of counties' mortality rates over time
+```{r, echo=F, fig.width=12, fig.height=6, message=F, warning=F}
+p3
+p4
+```
+
+We can see that for the most populated counties, the pattern of change in mortality rates is mostly unanimous and well-defined: the mortality rates peaks the highest at the beginning of the pandemic, then peaked again in fall 2020, and stabilized for the most of 2021. Counties that do not have a large population on the other hand, show very chaotic patterns. Including observations from these counties might negatively affect the result of our study, and we will look closer at them later to decide whether they should be excluded.\
+
+
+
+From these plots, we can also see how volatile COVID mortaility rates change overtime. Since there are myriad factors that affects the COVID-19 spread, it would not be reasonable to fit our regression model on the entire dataset if we wish to get any meaningful result. Therefore, there are two approaches. One is we extract data from one particular day and perform inferential analysis. Another is we choose to split the data by selected time intervals, and fit the model on these data subsets to get more interpretable results, for example we may the data of year 2021 as changes in our response variable occurred in 2021 looks less drastic comparing to that of 2020.\
+
+
+
+Finally, before we proceed to modeling, we want to know the approximate distribution our response variable follows. Since the approach is to use segments of the data to fit the model for avoiding complicated fluctuation in the data and for better results of our model, we here visualize using histograms on data from the year 2021 only.
+
+```{r, echo=F, message=F, warning=F}
+df1 <- cali.county.covid.withUR.Inc.Vac[cali.county.covid.withUR.Inc.Vac$date >= "2021-01-06"&
+                                            cali.county.covid.withUR.Inc.Vac$date <= "2021-12-31",]
+
+df2 <- df1[df1$`2013 code` %in% c(1,2,3),]
+df3 <- df1[!df1$`2013 code` %in% c(1,2,3),]
+```
+
+```{r, echo=F, message=F, warning=F, fig.height=4, fig.width=10, results=F}
+par(mfrow=c(1,2))
+
+hist(df1$fatal_rate, xlab="Mortality rate in percentage", main="All counties")
+fitdistrplus::descdist(as.numeric(na.omit(df1$fatal_rate)), discrete = F)
+```
+
+From the histogram, we see that the data does have a bell shape. To determine the distribution more precisely, we use function *descdist* from package *fitdistrplus*, which gives the right plot, the Cullen and Frey graph. This plot shows the kurtosis and the skewness of the input data. Kurtosis is a measure of how much the data is heavy-tailed or light-tailed compared to a normal distribution, while skewness a measure of asymmetry, with higher skewness squared implying a more skewed distribution. The Cullen and Frey graph also has markers and regions that gives reference on where kurtosis and skewness of iconic distributions, such as normal, uniform, or gamma, are on the graph. Hence, we can see that the mortality rates of all counties from 2021 follows approximately a logistic distribution rather than normal. Indeed, we can do certain transformation on the data for it to behave closer to normal, but the resulted model could have coefficients that become hard to interpret. Instead, we can look into distributions of certain subsets of this data segment based on our interest on urban-rural classification.
+
+
+```{r, echo=F, message=F, warning=F, fig.height=4, fig.width=10, results=F}
+par(mfrow=c(1,2))
+hist(df2$fatal_rate, xlab="Mortality rate in percentage", main="Medium metro or larger counties (code=1,2,3)")
+fitdistrplus::descdist(as.numeric(na.omit(df2$fatal_rate)), discrete = F)
+
+hist(df3$fatal_rate, xlab="Mortality rate in percentage", main="Small metro or smaller counties (code=4,5,6)")
+
+fitdistrplus::descdist(as.numeric(na.omit(df3$fatal_rate)), discrete = F)
+```
+
+Here we further partitioned the previous data segment into two subsets, one contains mortality rates from 2021 of counties that are large central metro, large fringe metro, or medium metro (code = 1,2, or 3), another contains mortality rates from 2021 of counties that are small metro, micropolitan, or non-core (code = 4,5, or 6). From their respective histograms and Cullen and Frey graphs, we see that the first subset does follow an aprroximately normal distribution, while the second subset is closer to gamma or beta, and has larger skewness. This makes sense since the second subset represents the less populated counties where data anomalies can more often happen. As an conclusion, it might be our best interest to model two divisions of counties separately, and bridge the results afterwards if possible.
+
+
+# Inferential Analysis
+
+The general method being adopted here is multiple linear regression, with the three predictors being vaccinated rate, urban-rural classification code, and average per capita income of the counties.\
+Our first proposed model is a full model that includes all predictors as well as their two-way and three-way interactions. Although only the interaction between urban-rural code and average income was clearly discovered, we did see that the average vaccination rates are different between top populated and least populated counties. To state it clearly, the full model is 
+$$
+Y=\beta_0+\beta_1X_1+\beta_2X_2+\beta_3X_3+\beta_4(X_1X_2)+\beta_5(X_2X_3)+\beta_6(X_1X_3)+\beta_7(X_1X_2X_3)+\epsilon
+$$
+where X1 is the vaccinated percentage, X2 is the per capita income, X3 is the urban-rural classification, and Y is the response variable mortality rate of COVID-19. The parameters in this model are the intercept $\beta_0$, the regression coefficients $\beta_1$ and $\beta_2$ for X2 and X3, the regression coefficients $\beta_3$ to $\beta_7$ for the interaction terms. We assume the random error $\epsilon \sim N(0,\sigma^2)$ for some unknown variance.\
+
+
+Alternatively, we may also adopt some reduced models where they don't contain some of the interaction effects, have they not shown significance. For example, one appealing reduced model would be
+$$
+Y=\beta_0+\beta_1X_1+\beta_2X_2+\beta_3X_3+\beta_4(X_1X_3)+\beta_5(X_2X_3)+\epsilon
+$$
+where it only accounts for the three predictors and the two-way interactions, one between urban-rural code and income, another one between urban-rural code and vaccination rate. The assumptions for this model remains the same.\
+
+To decide whether to use the full model or some reduced model, we choose to use forward selection method with Bayesian Information Criterion (BIC) as the criteria. By definition,
+$$
+BIC=n\ log\frac{SSE}{n}+log(n)\ p
+$$
+This method will try to balance the goodness-of-fit of the model and its complexity, as in general models with small residual sum of squares (SSE) uses more parameters (p). Also, "forward selection" means we start with the null model (that only has intercept term) and try to add covariates of the full model one by one until the AIC score stops decreasing.\
+To fit the model, we choose to use the data of 2021 from large or medium metro counties (code 1, 2, or 3) as they meet the normaility assumption from the exploratory analysis. The fitted model has summary as the following\
+ \
+```{r, echo=F}
+tab_model(fit.BIC,digits=6)
+```
+The BIC method suggests the model with all three predictors and two interaction effects $X1X2$ and $X2X3$, which is also the reduced model we showed above.\
+Interpretation of the coefficients in order:\
+**Intercept**: mortality rate when total vaccination rate at 0, county being large central metro, and average income at 0\
+**2013 code [2]**: change in mortality rate when county classification changes from large central metro to large fringe metro\
+**2013 code [2]**: change in mortality rate when county classification changes from large central metro to medium metro\
+**Per capita income**: change in mortality rate for every unit increase in average income when the county is large central metro\
+**Total vacc pct**: change in mortality rate for every percentage increase in vaccination rate when the county is large central metro\
+**2013 code [2] * Per capita income**: change in mortality rate for every unit increase in average income when the county is large fringe metro\
+**2013 code [3] * Per capita income**: change in mortality rate for every unit increase in average income when the county is medium metro\
+**2013 code [2] * Total vacc pct**: change in mortality rate for every percentage increase in vaccination rate when the county is large fringe metro\
+**2013 code [3] * Total vacc pct**: change in mortality rate for every percentage increase in vaccination rate when the county is medium metro\
+
+We see that all the coefficients are significant, and the model is able to explain 36% of the total variation. We will adopt this model for the rest of analysis.\
+
+We now wish to test the generality of this model. As mentioned before, there are two approaches for choosing the data to fit the model on, one is single day data, another is data from a time period. Below are five models' summaries where they are fitted on data from one single day, 3 consecutive days, 1 consecutive week, 2 consecutive weeks, and 1 consecutive month, respectively. The starting date is July 28th, 2021, a randomly chosen date, for all 5 data sets.\
+ \
+```{r, echo=F}
+tab_model(m.d1,digits=6)
+tab_model(m.d2,digits=6)
+tab_model(m.d3,digits=6)
+tab_model(m.d4,digits=6)
+```
+
+ \
+
+We see that as more data being used, the significance of coefficients goes up. Yet all models are able to explain around 38% of the total variation, similar to the BIC model that was fitted on the whole 2021 data. So we claim that this particular model that uses three predictors and two interaction effects has a stable performance.\
+
+
+
+# Sensitivity Analysis
+
+Now we wish to  examine the plausibility of assumptions of our model. The main assumptions are that the error would follow a normal distribution with mean 0 and some unknow variance, and the relationship of the covariates and the response is linear. To test these assumptions, we plot the diagnostics for the five models we looked into above
+
+```{r, echo=F, fig.width=8, fig.height=6}
+par(mfrow=c(2,2), mar=c(5.1,4.3,5.1,3))
+plot(m.d1)
+mtext("Using data from a single day", side = 3, line = -2, outer = TRUE)
+
+plot(m.d2)
+mtext("Using data from a week", side = 3, line = -2, outer = TRUE)
+
+plot(m.d3)
+mtext("Using data from two weeks", side = 3, line = -2, outer = TRUE)
+
+plot(m.d4)
+mtext("Using data from a month", side = 3, line = -2, outer = TRUE)
+```
+
+The diagnostics for shows no significant violation on linear assumptions as residual v. fitted plot shows no obvious pattern; no significant violation on normality assumptions as QQ plot shows most of the points on the line; no significant violation on constant variance assumptions as scale-location plot shows no obvious pattern; one or two outliers from the residual v. leverage.\
+For the rest of the models, we do see that QQ plots shows non-normality of some points, but nothing significantly bad. In terms of outliers, we need to indentify cases that are influential and outlying in X or Y. We test outliers in Y using Bonferroni's procedure, test outliers in X by calculating leverages, and test influential cases by calculating Cook's distances. For the fourth model, the one with the most observations, we identified 9 outliers out of 928 observations, which is very few. Removing these outliers we obtained a model with the following summary, where the portion of explain variation changed from 38% to 39.1%, implying there are no serious outlying circumstance.\
+ \
+```{r, echo=F}
+tab_model(m.final,digits=6)
+```
+
+
+# Conclusion
+
+From the last model summary, we see that 39.5 percent of the variation is explained by our covariates, and most of the coefficients are significant at level $\alpha=0.05$.\
+A few key points:\
+1. Total vaccinated rate has a positive coefficient, where each percentage increase can lead to 0.014 percent increase in total mortality rate\
+This is an interesting finding, as intuitively we would assume an increase in the overall vaccination rate would ring down the mortality rate. One thing that needs to be stated clearly is that there are already numerous researches that shows getting the vaccine drastically decrease a person's chance of having serious symptoms, getting hospitalized, or dying. Our finding may seem contradictory at first, but remember that this study is foucsing on the overall trend of COVID mortality rate. Although vaccine would bring down the mortailty rate for a single person, a small increase in the overall vaccinated rate might not be enough to lower the mortality rate of COVID if the population vaccinated rate is not high enough, especially when looking at data from last year when many people were not fully vaccinated. Another explanation would be the spread of COVID variants, such as delta, notoriously known for its fatality, is not a factor being considered in our model.\
+ \
+2. Code 2 and 3 have coefficients in opposite signs\
+The coefficient of code 2 represents the difference of mortality rate between large central metro and large fringe metro counties when other factors are held constant. This coefficient being -0.21 means large fringe metro has a lower mortality rate in general. Two examples of these counties are Yolo and San Bernardino county, which are close to large counties such as Sacramento and Los Angeles. One possible scenario would be that code 2 counties are less populated, but still have good medical resources, so it would be reasonable to assume they have lower mortality rates. On the other hand, medium metro counties have 0.78 percent higher mortality rates compared to large central metros. Two examples of medium metro counties are Fresno and Santa Barbara. A possible explanation still ties to medical resources, which these less metro counties may lack when facing large outbreaks, resulting in higher mortality rates.\
+ \
+3. Per_capita_income has a negative coefficient\
+This means a more wealth county would have a lower mortality rate, which unfortunately is true as it is quite common under the US health care system that the wealthier you are, the better medical resources you would have a chance to receive.\
+ \
+
+Vaccination rate, urban-rural classification, per capita income level all have significant relationship with counties' COVID-19 mortality rate, although they could only explain around fourty percent of the variation. It is also logical to assume that there are still observations in the data that are hard for the model to explain. Also, potential insufficient recording or policy change might be the reason to the unexpected/unnatural increases in the vaccination data, which is outside of our control.
+
+
+# Data Sources:
+
+United States COVID-19 cases and death data:
+
+https://data.chhs.ca.gov/dataset/covid-19-time-series-metrics-by-county-and-state
+
+https://data.chhs.ca.gov/dataset/covid-19-time-series-metrics-by-county-and-state/resource/046cdd2b-31e5-4d34-9ed3-b48cdbc4be7a
+
+California counties' per capita income data:
+
+https://en.wikipedia.org/wiki/List_of_United_States_counties_by_per_capita_income
+
+https://en.wikipedia.org/wiki/List_of_California_locations_by_income#References
+
+US Census Urban-rural classification data:
+
+https://www.cdc.gov/nchs/data_access/urban_rural.htm
+
+https://www.cdc.gov/nchs/data/data_acces_files/NCHSUrbruralFileDocumentationInternet2.pdf
+
+United States COVID-19 Vaccination data:
+
+https://data.cdc.gov/Vaccinations/COVID-19-Vaccinations-in-the-United-States-County/8xkx-amqh/data
+
+
